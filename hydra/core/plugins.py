@@ -86,7 +86,9 @@ class Plugins(metaclass=Singleton):
             if classname not in self.class_name_to_class.keys():
                 raise RuntimeError(f"Unknown plugin class : '{classname}'")
             clazz = self.class_name_to_class[classname]
-            plugin = internal_utils._instantiate_class(clazz=clazz, config=config)
+            plugin = internal_utils._instantiate_class(
+                clazz=clazz, config=config, recursive=False
+            )
             assert isinstance(plugin, Plugin)
 
         except ImportError as e:

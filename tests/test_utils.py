@@ -20,9 +20,19 @@ from tests import (
     AnotherClass,
     ASubclass,
     BadAdamConf,
+    CenterCrop,
+    CenterCropConf,
+    Compose,
+    ComposeConf,
     IllegalType,
+    Mapping,
+    MappingConf,
     NestingClass,
     Parameters,
+    Rotation,
+    RotationConf,
+    Tree,
+    TreeConf,
     UntypedPassthroughClass,
     UntypedPassthroughConf,
 )
@@ -57,6 +67,13 @@ def test_a_class_eq() -> None:
     assert AClass(a=10, b=20, c=30, d=40) == AClass(a=10, b=20, c=30, d=40)
 
 
+@pytest.mark.parametrize(  # type: ignore
+    "recursive",
+    [
+        pytest.param(False, id="non_recursive"),
+        pytest.param(True, id="recursive"),
+    ],
+)
 @pytest.mark.parametrize(  # type: ignore
     "input_conf, passthrough, expected",
     [
@@ -147,6 +164,17 @@ def test_a_class_eq() -> None:
             id="passthrough",
         ),
         pytest.param(
+            {"_target_": "tests.AClass"},
+            {
+                "a": 10,
+                "b": 20,
+                "c": 30,
+                "d": {"x": [10, IllegalType()]},
+            },
+            AClass(a=10, b=20, c=30, d={"x": [10, IllegalType()]}),
+            id="passthrough:list",
+        ),
+        pytest.param(
             UntypedPassthroughConf,
             {"a": IllegalType()},
             UntypedPassthroughClass(a=IllegalType()),
@@ -155,11 +183,14 @@ def test_a_class_eq() -> None:
     ],
 )
 def test_class_instantiate(
-    input_conf: Any, passthrough: Dict[str, Any], expected: Any
+    input_conf: Any, passthrough: Dict[str, Any], expected: Any, recursive: bool
 ) -> Any:
     def test(conf: Any) -> None:
         conf_copy = copy.deepcopy(conf)
-        obj = utils.instantiate(conf, **passthrough)
+        if recursive:
+            obj = utils.instantiate_recursive(conf, **passthrough)
+        else:
+            obj = utils.instantiate(conf, **passthrough)
         assert obj == expected
         # make sure config is not modified by instantiate
         assert conf == conf_copy
@@ -550,4 +581,198 @@ def test_interpolation_accessing_parent_deprecated(
 ) -> Any:
     input_conf = OmegaConf.create(input_conf)
     obj = utils.instantiate(input_conf.node, **passthrough)
+    assert obj == expected
+
+
+@pytest.mark.parametrize(  # type: ignore
+    "cfg, passthrough, expected",
+    [
+        # direct
+        pytest.param(
+            {
+                "_target_": "tests.Tree",
+                "value": 1,
+                "left": {
+                    "_target_": "tests.Tree",
+                    "value": 21,
+                },
+                "right": {
+                    "_target_": "tests.Tree",
+                    "value": 22,
+                },
+            },
+            {},
+            Tree(value=1, left=Tree(value=21), right=Tree(value=22)),
+            id="recursive:direct:dict",
+        ),
+        pytest.param(
+            {"_target_": "tests.Tree"},
+            {"value": 1},
+            Tree(value=1),
+            id="recursive:direct:dict:passthrough",
+        ),
+        pytest.param(
+            {"_target_": "tests.Tree"},
+            {"value": 1, "left": {"_target_": "tests.Tree", "value": 2}},
+            Tree(value=1, left=Tree(2)),
+            id="recursive:direct:dict:passthrough",
+        ),
+        pytest.param(
+            {"_target_": "tests.Tree"},
+            {
+                "value": 1,
+                "left": {"_target_": "tests.Tree", "value": 2},
+                "right": {"_target_": "tests.Tree", "value": 3},
+            },
+            Tree(value=1, left=Tree(2), right=Tree(3)),
+            id="recursive:direct:dict:passthrough",
+        ),
+        pytest.param(
+            {"_target_": "tests.Tree"},
+            {"value": IllegalType()},
+            Tree(value=IllegalType()),
+            id="recursive:direct:dict:passthrough:incompatible_value",
+        ),
+        pytest.param(
+            {"_target_": "tests.Tree"},
+            {"value": 1, "left": {"_target_": "tests.Tree", "value": IllegalType()}},
+            Tree(value=1, left=Tree(value=IllegalType())),
+            id="recursive:direct:dict:passthrough:incompatible_value",
+        ),
+        pytest.param(
+            TreeConf(
+                value=1,
+                left=TreeConf(value=21),
+                right=TreeConf(value=22),
+            ),
+            {},
+            Tree(value=1, left=Tree(value=21), right=Tree(value=22)),
+            id="recursive:direct:dataclass",
+        ),
+        pytest.param(
+            TreeConf(
+                value=1,
+                left=TreeConf(value=21),
+            ),
+            {"right": {"value": 22}},
+            Tree(value=1, left=Tree(value=21), right=Tree(value=22)),
+            id="recursive:direct:dataclass:passthrough",
+        ),
+        pytest.param(
+            TreeConf(
+                value=1,
+                left=TreeConf(value=21),
+            ),
+            {"right": TreeConf(value=22)},
+            Tree(value=1, left=Tree(value=21), right=Tree(value=22)),
+            id="recursive:direct:dataclass:passthrough",
+        ),
+        pytest.param(
+            TreeConf(
+                value=1,
+                left=TreeConf(value=21),
+            ),
+            {
+                "right": TreeConf(value=IllegalType()),
+            },
+            Tree(value=1, left=Tree(value=21), right=Tree(value=IllegalType())),
+            id="recursive:direct:dataclass:passthrough",
+        ),
+        # list
+        # note that passthrough to a list element is not currently supported
+        pytest.param(
+            ComposeConf(
+                transforms=[
+                    CenterCropConf(size=10),
+                    RotationConf(degrees=45),
+                ]
+            ),
+            {},
+            Compose(
+                transforms=[
+                    CenterCrop(size=10),
+                    Rotation(degrees=45),
+                ]
+            ),
+            id="recursive:list:dataclass",
+        ),
+        pytest.param(
+            {
+                "_target_": "tests.Compose",
+                "transforms": [
+                    {"_target_": "tests.CenterCrop", "size": 10},
+                    {"_target_": "tests.Rotation", "degrees": 45},
+                ],
+            },
+            {},
+            Compose(
+                transforms=[
+                    CenterCrop(size=10),
+                    Rotation(degrees=45),
+                ]
+            ),
+            id="recursive:list:dict",
+        ),
+        # map
+        pytest.param(
+            MappingConf(
+                dictionary={
+                    "a": MappingConf(),
+                    "b": MappingConf(),
+                }
+            ),
+            {},
+            Mapping(
+                dictionary={
+                    "a": Mapping(),
+                    "b": Mapping(),
+                }
+            ),
+            id="recursive:map:dataclass",
+        ),
+        pytest.param(
+            {
+                "_target_": "tests.Mapping",
+                "dictionary": {
+                    "a": {"_target_": "tests.Mapping"},
+                    "b": {"_target_": "tests.Mapping"},
+                },
+            },
+            {},
+            Mapping(
+                dictionary={
+                    "a": Mapping(),
+                    "b": Mapping(),
+                }
+            ),
+            id="recursive:map:dict",
+        ),
+        pytest.param(
+            {
+                "_target_": "tests.Mapping",
+                "dictionary": {
+                    "a": {"_target_": "tests.Mapping"},
+                },
+            },
+            {
+                "dictionary": {
+                    "b": {"_target_": "tests.Mapping"},
+                },
+            },
+            Mapping(
+                dictionary={
+                    "a": Mapping(),
+                    "b": Mapping(),
+                }
+            ),
+            id="recursive:map:dict:passthrough",
+        ),
+    ],
+)
+def test_recursive_instantiation(
+    cfg: Any,
+    passthrough: Dict[str, Any],
+    expected: Any,
+) -> None:
+    obj = utils.instantiate_recursive(cfg, **passthrough)
     assert obj == expected

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 from omegaconf._utils import is_structured_config
 
 from hydra._internal.utils import (
@@ -20,10 +20,19 @@ from hydra.types import TargetConf
 log = logging.getLogger(__name__)
 
 
+def call_recursive(config: Any, *args: Any, **kwargs: Any) -> Any:
+    return _call(config, True, *args, **kwargs)
+
+
 def call(config: Any, *args: Any, **kwargs: Any) -> Any:
+    return _call(config, False, *args, **kwargs)
+
+
+def _call(config: Any, recursive: bool, *args: Any, **kwargs: Any) -> Any:
     """
     :param config: An object describing what to call and what params to use.
                    Must have a _target_ field.
+    :param recursive: True to recursively initialize child objects
     :param args: optional positional parameters pass-through
     :param kwargs: optional named parameters pass-through
     :return: the return value from the specified class or method
@@ -47,23 +56,36 @@ def call(config: Any, *args: Any, **kwargs: Any) -> Any:
         raise HydraException(f"Unsupported config type : {type(config).__name__}")
 
     # make a copy to ensure we do not change the provided object
-    config_copy = OmegaConf.structured(config)
+    config_copy = OmegaConf.structured(config, flags={"allow_objects": True})
     if OmegaConf.is_config(config):
         config_copy._set_parent(config._get_parent())
     config = config_copy
 
     cls = "<unknown>"
     try:
-        assert isinstance(config, DictConfig)
+        assert OmegaConf.is_config(config)
         OmegaConf.set_readonly(config, False)
         OmegaConf.set_struct(config, False)
+        config._set_flag("allow_objects", True)
         cls = _get_cls_name(config)
         type_or_callable = _locate(cls)
         if isinstance(type_or_callable, type):
-            return _instantiate_class(type_or_callable, config, *args, **kwargs)
+            return _instantiate_class(
+                type_or_callable,
+                config,
+                recursive,
+                *args,
+                **kwargs,
+            )
         else:
             assert callable(type_or_callable)
-            return _call_callable(type_or_callable, config, *args, **kwargs)
+            return _call_callable(
+                type_or_callable,
+                config,
+                recursive,
+                *args,
+                **kwargs,
+            )
     except InstantiationException as e:
         raise e
     except Exception as e:
@@ -72,6 +94,7 @@ def call(config: Any, *args: Any, **kwargs: Any) -> Any:
 
 # Alias for call
 instantiate = call
+instantiate_recursive = call_recursive
 
 
 def get_class(path: str) -> type:

@@ -12,8 +12,7 @@ from traceback import print_exc, print_exception
 from types import FrameType
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Type, Union
 
-from omegaconf import DictConfig, OmegaConf, read_write
-from omegaconf._utils import get_ref_type
+from omegaconf import DictConfig, ListConfig, OmegaConf
 from omegaconf.errors import OmegaConfBaseException
 
 from hydra._internal.config_search_path_impl import ConfigSearchPathImpl
@@ -493,20 +492,24 @@ def get_column_widths(matrix: List[List[str]]) -> List[int]:
 
 
 def _instantiate_class(
-    clazz: Type[Any], config: Union[ObjectConf, DictConfig], *args: Any, **kwargs: Any
+    clazz: Type[Any],
+    config: Union[ObjectConf, DictConfig],
+    recursive: bool,
+    *args: Any,
+    **kwargs: Any,
 ) -> Any:
-    # TODO: pull out to caller?
-    final_kwargs = _get_kwargs(config, **kwargs)
+    final_kwargs = _get_kwargs(config, recursive=recursive, **kwargs)
     return clazz(*args, **final_kwargs)
 
 
 def _call_callable(
     fn: Callable[..., Any],
     config: Union[ObjectConf, DictConfig],
+    recursive: bool,
     *args: Any,
     **kwargs: Any,
 ) -> Any:
-    final_kwargs = _get_kwargs(config, **kwargs)
+    final_kwargs = _get_kwargs(config, recursive=recursive, **kwargs)
     return fn(*args, **final_kwargs)
 
 
@@ -558,7 +561,25 @@ def _locate(path: str) -> Union[type, Callable[..., Any]]:
         raise ValueError(f"Invalid type ({type(obj)}) found for {path}")
 
 
-def _get_kwargs(config: Union[ObjectConf, DictConfig], **kwargs: Any) -> Any:
+def _is_target(x: Any) -> bool:
+    if OmegaConf.is_dict(x) and not OmegaConf.is_none(x):
+        return "_target_" in x
+    return False
+
+
+def _get_kwargs(
+    config: Union[ObjectConf, DictConfig, ListConfig],
+    recursive: bool,
+    **kwargs: Any,
+) -> Any:
+    from hydra.utils import _call
+
+    if OmegaConf.is_list(config):
+        assert isinstance(config, ListConfig)
+        return [
+            _get_kwargs(x, recursive=recursive) if OmegaConf.is_config(x) else x
+            for x in config
+        ]
 
     if isinstance(config, ObjectConf):
         config = OmegaConf.structured(config)
@@ -567,6 +588,7 @@ def _get_kwargs(config: Union[ObjectConf, DictConfig], **kwargs: Any) -> Any:
         else:
             params = OmegaConf.create()
     else:
+        assert OmegaConf.is_config(config)
         config = copy.deepcopy(config)
         if "params" in config:
             msg = (
@@ -579,35 +601,47 @@ def _get_kwargs(config: Union[ObjectConf, DictConfig], **kwargs: Any) -> Any:
         else:
             params = config
 
-    assert isinstance(
-        params, DictConfig
-    ), f"Input config params are expected to be a mapping, found {type(config.params).__name__}"
+    assert OmegaConf.is_dict(
+        params
+    ), "Input config params is not an OmegaConf DictConfig"
 
-    config_overrides = {}
-    passthrough = {}
-    for k, v in kwargs.items():
-        if k in params and not (
-            get_ref_type(params, k) is Any and OmegaConf.is_missing(params, k)
-        ):
-            config_overrides[k] = v
-        else:
-            passthrough[k] = v
+    # TODO: can this just be params?
     final_kwargs = {}
 
-    with read_write(params):
-        params.merge_with(config_overrides)
+    overrides = OmegaConf.create(kwargs, flags={"allow_objects": True})
+    params.merge_with(overrides)
 
-    for k in params.keys():
-        if k == "_target_":
-            continue
-        if k not in passthrough:
-            final_kwargs[k] = params[k]
+    for k, v in params.items():
+        if k != "_target_":
+            final_kwargs[k] = v
 
-    for k, v in passthrough.items():
-        final_kwargs[k] = v
+    if recursive:
+        for k, v in final_kwargs.items():
+            if _is_target(v):
+                final_kwargs[k] = _call(v, recursive=recursive)
+            elif OmegaConf.is_dict(v) and not OmegaConf.is_none(v):
+                d = {}
+                for key, value in v.items():
+                    if _is_target(value):
+                        d[key] = _call(value, recursive=recursive)
+                    elif OmegaConf.is_config(value):
+                        d[key] = _get_kwargs(value, recursive=recursive)
+                    else:
+                        d[key] = value
+                final_kwargs[k] = d
+            elif OmegaConf.is_list(v):
+                lst = []
+                for x in v:
+                    if _is_target(x):
+                        lst.append(_call(x, recursive=recursive))
+                    elif OmegaConf.is_config(x):
+                        lst.append(_get_kwargs(x, recursive=recursive))
+                    else:
+                        lst.append(x)
+                final_kwargs[k] = lst
+            else:
+                final_kwargs[k] = v
 
-    for k, v in passthrough.items():
-        final_kwargs[k] = v
     return final_kwargs
 
 
