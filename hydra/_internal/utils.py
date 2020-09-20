@@ -640,6 +640,8 @@ def _get_kwargs(
                         lst.append(x)
                 final_kwargs[k] = lst
             else:
+                if OmegaConf.is_none(v):
+                    v = None
                 final_kwargs[k] = v
 
     return final_kwargs
