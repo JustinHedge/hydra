@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from os.path import dirname, join, normpath, realpath
 from traceback import print_exc, print_exception
 from types import FrameType
-from typing import Any, Callable, List, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
-from configen.utils import type_str
 from omegaconf import DictConfig, ListConfig, OmegaConf
+from omegaconf._utils import type_str
 from omegaconf.errors import OmegaConfBaseException
 
 from hydra._internal.config_search_path_impl import ConfigSearchPathImpl
@@ -491,7 +491,7 @@ def get_column_widths(matrix: List[List[str]]) -> List[int]:
 
 
 def _instantiate_or_call(
-    clazz: Type[Any],
+    clazz: Any,
     config: DictConfig,
     *args: Any,
     **kwargs: Any,
@@ -554,13 +554,25 @@ def _is_target(x: Any) -> bool:
     return False
 
 
-def _is_recursive(d: Any) -> Optional[bool]:
-    if "_recursive_" in d:
-        rec = d.pop("_recursive_")
-        if not isinstance(rec, bool):
-            raise ValueError(f"_recursive_ flag must be a bool, got {type_str(rec)}")
-        return rec
-    return None
+def _is_recursive(config: Any, kwargs: Any) -> bool:
+    def _is_rec(d: Any) -> Optional[bool]:
+        if "_recursive_" in d:
+            rec = d.pop("_recursive_")
+            if not isinstance(rec, bool):
+                raise ValueError(
+                    f"_recursive_ flag must be a bool, got {type_str(rec)}"
+                )
+            return rec
+        return None
+
+    # pop both in any case
+    kwrec = _is_rec(kwargs)
+    configrec = _is_rec(config)
+    if kwrec is not None:
+        return kwrec
+    elif configrec is not None:
+        return configrec
+    return True
 
 
 def _get_kwargs(
@@ -579,12 +591,7 @@ def _get_kwargs(
 
     final_kwargs = {}
 
-    recursive = True
-    if _is_recursive(kwargs) is False:
-        recursive = False
-    elif _is_recursive(config) is False:
-        recursive = False
-
+    recursive = _is_recursive(config, kwargs)
     overrides = OmegaConf.create(kwargs, flags={"allow_objects": True})
     config.merge_with(overrides)
 
@@ -607,7 +614,7 @@ def _get_kwargs(
                         d[key] = value
                 final_kwargs[k] = d
             elif OmegaConf.is_list(v):
-                lst = d = OmegaConf.create([], flags={"allow_objects": True})
+                lst = OmegaConf.create([], flags={"allow_objects": True})
                 for x in v:
                     if _is_target(x):
                         lst.append(_call(x))

@@ -60,8 +60,6 @@ def _call(config: Any, *args: Any, **kwargs: Any) -> Any:
         config._set_flag("allow_objects", True)
         cls = _get_cls_name(config)
         type_or_callable = _locate(cls)
-        # convert to a primitive container to improve perf in some critical classes
-        # kwargs = OmegaConf.to_container(kwargs, resolve=True)
         return _instantiate_or_call(
             type_or_callable,
             config,
@@ -69,8 +67,7 @@ def _call(config: Any, *args: Any, **kwargs: Any) -> Any:
             **kwargs,
         )
     except Exception as e:
-        e.msg = f"Error instantiating/calling '{cls}' : {e}"
-        raise e
+        raise type(e)(f"Error instantiating/calling '{cls}' : {e}")
 
 
 # Alias for call

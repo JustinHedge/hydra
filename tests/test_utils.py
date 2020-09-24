@@ -6,14 +6,13 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pytest
-
-from hydra.types import TargetConf
 from omegaconf import DictConfig, OmegaConf
 
 from hydra import utils
 from hydra.conf import HydraConf, RuntimeConf
 from hydra.core.hydra_config import HydraConfig
 from hydra.errors import InstantiationException
+from hydra.types import TargetConf
 from tests import (
     AClass,
     Adam,
@@ -303,7 +302,7 @@ def test_targetconf_deprecated() -> None:
         TargetConf()
 
 
-def test_instantiate_bad_adam_conf(recwarn) -> None:
+def test_instantiate_bad_adam_conf(recwarn: Any) -> None:
     msg = (
         "Missing value for BadAdamConf._target_. Check that it's properly annotated and overridden."
         "\nA common problem is forgetting to annotate _target_ as a string : '_target_: str = ...'"
@@ -519,5 +518,150 @@ def test_recursive_instantiation(
     passthrough: Dict[str, Any],
     expected: Any,
 ) -> None:
-    obj = utils.instantiate(cfg, _recursive_=True, **passthrough)
+    obj = utils.instantiate(cfg, **passthrough)
+    assert obj == expected
+
+
+@pytest.mark.parametrize(  # type: ignore
+    "cfg, passthrough, expected",
+    [
+        pytest.param(
+            {
+                "_target_": "tests.Tree",
+                "value": 1,
+                "left": {
+                    "_target_": "tests.Tree",
+                    "value": 21,
+                },
+            },
+            {},
+            Tree(value=1, left=Tree(value=21)),
+            id="default",
+        ),
+        pytest.param(
+            {
+                "_target_": "tests.Tree",
+                "_recursive_": True,
+                "value": 1,
+                "left": {
+                    "_target_": "tests.Tree",
+                    "value": 21,
+                },
+            },
+            {"_recursive_": True},
+            Tree(value=1, left=Tree(value=21)),
+            id="cfg:true,override:true",
+        ),
+        pytest.param(
+            {
+                "_target_": "tests.Tree",
+                "_recursive_": True,
+                "value": 1,
+                "left": {
+                    "_target_": "tests.Tree",
+                    "value": 21,
+                },
+            },
+            {"_recursive_": False},
+            Tree(value=1, left={"_target_": "tests.Tree", "value": 21}),
+            id="cfg:true,override:false",
+        ),
+        pytest.param(
+            {
+                "_target_": "tests.Tree",
+                "_recursive_": False,
+                "value": 1,
+                "left": {
+                    "_target_": "tests.Tree",
+                    "value": 21,
+                },
+            },
+            {"_recursive_": True},
+            Tree(value=1, left=Tree(value=21)),
+            id="cfg:false,override:true",
+        ),
+        pytest.param(
+            {
+                "_target_": "tests.Tree",
+                "_recursive_": False,
+                "value": 1,
+                "left": {
+                    "_target_": "tests.Tree",
+                    "value": 21,
+                },
+            },
+            {"_recursive_": False},
+            Tree(value=1, left={"_target_": "tests.Tree", "value": 21}),
+            id="cfg:false,override:false",
+        ),
+        pytest.param(
+            {
+                "_target_": "tests.Tree",
+                "value": 1,
+                "left": {
+                    "_target_": "tests.Tree",
+                    "value": 2,
+                    "left": {
+                        "_target_": "tests.Tree",
+                        "value": 3,
+                    },
+                },
+            },
+            {},
+            Tree(value=1, left=Tree(value=2, left=Tree(value=3))),
+            id="3_levels:default",
+        ),
+        pytest.param(
+            {
+                "_target_": "tests.Tree",
+                "_recursive_": False,
+                "value": 1,
+                "left": {
+                    "_target_": "tests.Tree",
+                    "value": 2,
+                    "left": {
+                        "_target_": "tests.Tree",
+                        "value": 3,
+                    },
+                },
+            },
+            {},
+            Tree(
+                value=1,
+                left={
+                    "_target_": "tests.Tree",
+                    "value": 2,
+                    "left": {"_target_": "tests.Tree", "value": 3},
+                },
+            ),
+            id="3_levels:cfg1=false",
+        ),
+        pytest.param(
+            {
+                "_target_": "tests.Tree",
+                "value": 1,
+                "left": {
+                    "_target_": "tests.Tree",
+                    "_recursive_": False,
+                    "value": 2,
+                    "left": {
+                        "_target_": "tests.Tree",
+                        "value": 3,
+                    },
+                },
+            },
+            {},
+            Tree(
+                value=1, left=Tree(value=2, left={"_target_": "tests.Tree", "value": 3})
+            ),
+            id="3_levels:cfg2=false",
+        ),
+    ],
+)
+def test_recursive_override(
+    cfg: Any,
+    passthrough: Any,
+    expected: Any,
+) -> None:
+    obj = utils.instantiate(cfg, **passthrough)
     assert obj == expected

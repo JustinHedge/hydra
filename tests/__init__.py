@@ -176,12 +176,11 @@ class Compose:
 
 class Tree:
     value: Any
-    left: Optional["Tree"] = None
-    right: Optional["Tree"] = None
+    # annotated any because of non recursive instantiation tests
+    left: Any = None
+    right: Any = None
 
-    def __init__(
-        self, value: Any, left: Optional["Tree"] = None, right: Optional["Tree"] = None
-    ) -> None:
+    def __init__(self, value: Any, left: Any = None, right: Any = None) -> None:
         self.value = value
         self.left = left
         self.right = right
