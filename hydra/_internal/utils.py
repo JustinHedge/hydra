@@ -1,6 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import argparse
-import copy
 import inspect
 import logging.config
 import os
@@ -490,7 +489,7 @@ def get_column_widths(matrix: List[List[str]]) -> List[int]:
     return widths
 
 
-def _instantiate_class(
+def _instantiate_or_call(
     clazz: Type[Any],
     config: DictConfig,
     recursive: bool,
@@ -499,17 +498,6 @@ def _instantiate_class(
 ) -> Any:
     final_kwargs = _get_kwargs(config, recursive=recursive, **kwargs)
     return clazz(*args, **final_kwargs)
-
-
-def _call_callable(
-    fn: Callable[..., Any],
-    config: DictConfig,
-    recursive: bool,
-    *args: Any,
-    **kwargs: Any,
-) -> Any:
-    final_kwargs = _get_kwargs(config, recursive=recursive, **kwargs)
-    return fn(*args, **final_kwargs)
 
 
 def _locate(path: str) -> Union[type, Callable[..., Any]]:
@@ -582,18 +570,14 @@ def _get_kwargs(
             for x in config
         ]
 
-    params = copy.deepcopy(config)  # TODO: no need to copy.
-    assert OmegaConf.is_dict(
-        params
-    ), "Input config params is not an OmegaConf DictConfig"
+    assert OmegaConf.is_dict(config), "Input config is not an OmegaConf DictConfig"
 
-    # TODO: can this just be params?
     final_kwargs = {}
 
     overrides = OmegaConf.create(kwargs, flags={"allow_objects": True})
-    params.merge_with(overrides)
+    config.merge_with(overrides)
 
-    for k, v in params.items():
+    for k, v in config.items():
         if k != "_target_":
             final_kwargs[k] = v
 

@@ -7,12 +7,7 @@ from typing import Any, Callable
 from omegaconf import OmegaConf
 from omegaconf._utils import is_structured_config
 
-from hydra._internal.utils import (
-    _call_callable,
-    _get_cls_name,
-    _instantiate_class,
-    _locate,
-)
+from hydra._internal.utils import _get_cls_name, _instantiate_or_call, _locate
 from hydra.core.hydra_config import HydraConfig
 from hydra.errors import HydraException, InstantiationException
 from hydra.types import TargetConf
@@ -69,23 +64,15 @@ def _call(config: Any, recursive: bool, *args: Any, **kwargs: Any) -> Any:
         config._set_flag("allow_objects", True)
         cls = _get_cls_name(config)
         type_or_callable = _locate(cls)
-        if isinstance(type_or_callable, type):
-            return _instantiate_class(
-                type_or_callable,
-                config,
-                recursive,
-                *args,
-                **kwargs,
-            )
-        else:
-            assert callable(type_or_callable)
-            return _call_callable(
-                type_or_callable,
-                config,
-                recursive,
-                *args,
-                **kwargs,
-            )
+        # convert to a primitive container to improve perf in some critical classes
+        # kwargs = OmegaConf.to_container(kwargs, resolve=True)
+        return _instantiate_or_call(
+            type_or_callable,
+            config,
+            recursive,
+            *args,
+            **kwargs,
+        )
     except InstantiationException as e:
         raise e
     except Exception as e:
