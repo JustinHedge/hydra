@@ -5,7 +5,6 @@ import inspect
 import logging.config
 import os
 import sys
-import warnings
 from dataclasses import dataclass
 from os.path import dirname, join, normpath, realpath
 from traceback import print_exc, print_exception
@@ -23,7 +22,7 @@ from hydra.errors import (
     InstantiationException,
     SearchPathException,
 )
-from hydra.types import ObjectConf, TaskFunction
+from hydra.types import TaskFunction
 
 log = logging.getLogger(__name__)
 
@@ -493,7 +492,7 @@ def get_column_widths(matrix: List[List[str]]) -> List[int]:
 
 def _instantiate_class(
     clazz: Type[Any],
-    config: Union[ObjectConf, DictConfig],
+    config: DictConfig,
     recursive: bool,
     *args: Any,
     **kwargs: Any,
@@ -504,7 +503,7 @@ def _instantiate_class(
 
 def _call_callable(
     fn: Callable[..., Any],
-    config: Union[ObjectConf, DictConfig],
+    config: DictConfig,
     recursive: bool,
     *args: Any,
     **kwargs: Any,
@@ -568,11 +567,13 @@ def _is_target(x: Any) -> bool:
 
 
 def _get_kwargs(
-    config: Union[ObjectConf, DictConfig, ListConfig],
+    config: Union[DictConfig, ListConfig],
     recursive: bool,
     **kwargs: Any,
 ) -> Any:
     from hydra.utils import _call
+
+    assert OmegaConf.is_config(config)
 
     if OmegaConf.is_list(config):
         assert isinstance(config, ListConfig)
@@ -581,26 +582,7 @@ def _get_kwargs(
             for x in config
         ]
 
-    if isinstance(config, ObjectConf):
-        config = OmegaConf.structured(config)
-        if config.params is not None:
-            params = config.params
-        else:
-            params = OmegaConf.create()
-    else:
-        assert OmegaConf.is_config(config)
-        config = copy.deepcopy(config)
-        if "params" in config:
-            msg = (
-                "\nField 'params' is deprecated since Hydra 1.0 and will be removed in Hydra 1.1."
-                "\nInline the content of params directly at the containing node."
-                "\nSee https://hydra.cc/docs/next/upgrades/0.11_to_1.0/object_instantiation_changes"
-            )
-            warnings.warn(category=UserWarning, message=msg)
-            params = config.params
-        else:
-            params = config
-
+    params = copy.deepcopy(config)  # TODO: no need to copy.
     assert OmegaConf.is_dict(
         params
     ), "Input config params is not an OmegaConf DictConfig"
@@ -648,30 +630,13 @@ def _get_kwargs(
 
 
 def _get_cls_name(config: DictConfig, pop: bool = True) -> str:
-    def _getcls(field: str) -> str:
-        if pop:
-            classname = config.pop(field)
-        else:
-            classname = config[field]
-        if not isinstance(classname, str):
-            raise InstantiationException(f"_target_ field '{field}' must be a string")
-        return classname
+    if "_target_" not in config:
+        raise InstantiationException("Input config does not have a `_target_` field")
 
-    for field in ["target", "cls", "class"]:
-        if field in config:
-            key = config._get_full_key(field)
-            msg = (
-                f"\nConfig key '{key}' is deprecated since Hydra 1.0 and will be removed in Hydra 1.1."
-                f"\nUse '_target_' instead of '{field}'."
-                f"\nSee https://hydra.cc/docs/next/upgrades/0.11_to_1.0/object_instantiation_changes"
-            )
-            warnings.warn(message=msg, category=UserWarning)
-
-    if "_target_" in config:
-        return _getcls("_target_")
-
-    for field in ["target", "cls", "class"]:
-        if field in config:
-            return _getcls(field)
-
-    raise InstantiationException("Input config does not have a `_target_` field")
+    if pop:
+        classname = config.pop("_target_")
+    else:
+        classname = config["_target_"]
+    if not isinstance(classname, str):
+        raise InstantiationException("_target_ field type must be a string")
+    return classname
