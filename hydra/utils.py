@@ -73,10 +73,9 @@ def _call(config: Any, recursive: bool, *args: Any, **kwargs: Any) -> Any:
             *args,
             **kwargs,
         )
-    except InstantiationException as e:
-        raise e
     except Exception as e:
-        raise HydraException(f"Error calling '{cls}' : {e}") from e
+        e.msg = f"Error instantiating/calling '{cls}' : {e}"
+        raise e
 
 
 # Alias for call

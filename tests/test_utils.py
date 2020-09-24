@@ -11,7 +11,7 @@ from omegaconf import DictConfig, OmegaConf
 from hydra import utils
 from hydra.conf import HydraConf, RuntimeConf
 from hydra.core.hydra_config import HydraConfig
-from hydra.errors import HydraException, InstantiationException
+from hydra.errors import InstantiationException
 from tests import (
     AClass,
     Adam,
@@ -308,7 +308,7 @@ def test_instantiate_bad_adam_conf() -> None:
 def test_instantiate_with_missing_module() -> None:
 
     with pytest.raises(
-        HydraException, match=re.escape("No module named 'some_missing_module'")
+        ModuleNotFoundError, match=re.escape("No module named 'some_missing_module'")
     ):
         # can't instantiate when importing a missing module
         utils.instantiate({"_target_": "tests.ClassWithMissingModule"})
