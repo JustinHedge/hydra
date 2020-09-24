@@ -1,4 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
@@ -10,8 +11,18 @@ TaskFunction = Callable[[Any], Any]
 
 @dataclass
 class TargetConf:
-    # class, class method or function name
+    """
+    This class is going away in Hydra 1.2.
+    You should no longer extend it or annotate with it.
+    instantiate will work correctly if you pass in a DictConfig object or any dataclass that has the
+    _target_ attribute.
+    """
+
     _target_: str = MISSING
+
+    def __post_init__(self) -> None:
+        msg = "\nTargetConf is deprecated since Hydra 1.1 and will be removed in Hydra 1.2."
+        warnings.warn(message=msg, category=UserWarning)
 
 
 class RunMode(Enum):

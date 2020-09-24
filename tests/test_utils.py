@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pytest
+
+from hydra.types import TargetConf
 from omegaconf import DictConfig, OmegaConf
 
 from hydra import utils
@@ -293,7 +295,17 @@ def test_instantiate_adam_conf() -> None:
     assert res == Adam(lr=0.123, params=adam_params)
 
 
-def test_instantiate_bad_adam_conf() -> None:
+def test_targetconf_deprecated() -> None:
+    with pytest.warns(
+        expected_warning=UserWarning,
+        match=re.escape(
+            "TargetConf is deprecated since Hydra 1.1 and will be removed in Hydra 1.2."
+        ),
+    ):
+        TargetConf()
+
+
+def test_instantiate_bad_adam_conf(recwarn) -> None:
     msg = (
         "Missing value for BadAdamConf._target_. Check that it's properly annotated and overridden."
         "\nA common problem is forgetting to annotate _target_ as a string : '_target_: str = ...'"
