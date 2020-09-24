@@ -170,11 +170,9 @@ def test_class_instantiate(
     input_conf: Any, passthrough: Dict[str, Any], expected: Any, recursive: bool
 ) -> Any:
     def test(conf: Any) -> None:
+        passthrough["_recursive_"] = recursive
         conf_copy = copy.deepcopy(conf)
-        if recursive:
-            obj = utils.instantiate_recursive(conf, **passthrough)
-        else:
-            obj = utils.instantiate(conf, **passthrough)
+        obj = utils.instantiate(conf, **passthrough)
         assert obj == expected
         # make sure config is not modified by instantiate
         assert conf == conf_copy
@@ -521,5 +519,5 @@ def test_recursive_instantiation(
     passthrough: Dict[str, Any],
     expected: Any,
 ) -> None:
-    obj = utils.instantiate_recursive(cfg, **passthrough)
+    obj = utils.instantiate(cfg, _recursive_=True, **passthrough)
     assert obj == expected

@@ -10,6 +10,7 @@ from traceback import print_exc, print_exception
 from types import FrameType
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Type, Union
 
+from configen.utils import type_str
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from omegaconf.errors import OmegaConfBaseException
 
@@ -492,11 +493,10 @@ def get_column_widths(matrix: List[List[str]]) -> List[int]:
 def _instantiate_or_call(
     clazz: Type[Any],
     config: DictConfig,
-    recursive: bool,
     *args: Any,
     **kwargs: Any,
 ) -> Any:
-    final_kwargs = _get_kwargs(config, recursive=recursive, **kwargs)
+    final_kwargs = _get_kwargs(config, **kwargs)
     return clazz(*args, **final_kwargs)
 
 
@@ -554,9 +554,17 @@ def _is_target(x: Any) -> bool:
     return False
 
 
+def _is_recursive(d: Any) -> Optional[bool]:
+    if "_recursive_" in d:
+        rec = d.pop("_recursive_")
+        if not isinstance(rec, bool):
+            raise ValueError(f"_recursive_ flag must be a bool, got {type_str(rec)}")
+        return rec
+    return None
+
+
 def _get_kwargs(
     config: Union[DictConfig, ListConfig],
-    recursive: bool,
     **kwargs: Any,
 ) -> Any:
     from hydra.utils import _call
@@ -565,43 +573,46 @@ def _get_kwargs(
 
     if OmegaConf.is_list(config):
         assert isinstance(config, ListConfig)
-        return [
-            _get_kwargs(x, recursive=recursive) if OmegaConf.is_config(x) else x
-            for x in config
-        ]
+        return [_get_kwargs(x) if OmegaConf.is_config(x) else x for x in config]
 
     assert OmegaConf.is_dict(config), "Input config is not an OmegaConf DictConfig"
 
     final_kwargs = {}
 
+    recursive = True
+    if _is_recursive(kwargs) is False:
+        recursive = False
+    elif _is_recursive(config) is False:
+        recursive = False
+
     overrides = OmegaConf.create(kwargs, flags={"allow_objects": True})
     config.merge_with(overrides)
 
     for k, v in config.items():
-        if k != "_target_":
+        if k not in ("_target_", "_recursive_"):
             final_kwargs[k] = v
 
     if recursive:
         for k, v in final_kwargs.items():
             if _is_target(v):
-                final_kwargs[k] = _call(v, recursive=recursive)
+                final_kwargs[k] = _call(v)
             elif OmegaConf.is_dict(v) and not OmegaConf.is_none(v):
-                d = {}
+                d = OmegaConf.create({}, flags={"allow_objects": True})
                 for key, value in v.items():
                     if _is_target(value):
-                        d[key] = _call(value, recursive=recursive)
+                        d[key] = _call(value)
                     elif OmegaConf.is_config(value):
-                        d[key] = _get_kwargs(value, recursive=recursive)
+                        d[key] = _get_kwargs(value)
                     else:
                         d[key] = value
                 final_kwargs[k] = d
             elif OmegaConf.is_list(v):
-                lst = []
+                lst = d = OmegaConf.create([], flags={"allow_objects": True})
                 for x in v:
                     if _is_target(x):
-                        lst.append(_call(x, recursive=recursive))
+                        lst.append(_call(x))
                     elif OmegaConf.is_config(x):
-                        lst.append(_get_kwargs(x, recursive=recursive))
+                        lst.append(_get_kwargs(x))
                     else:
                         lst.append(x)
                 final_kwargs[k] = lst

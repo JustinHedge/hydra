@@ -4,6 +4,7 @@ from typing import List
 from omegaconf import DictConfig
 
 import hydra
+from hydra.utils import instantiate
 
 
 class Driver:
@@ -29,7 +30,7 @@ class Car:
 
 @hydra.main(config_name="config")
 def my_app(cfg: DictConfig) -> None:
-    car: Car = hydra.utils.instantiate_recursive(cfg.car)
+    car: Car = instantiate(cfg.car)
     car.drive()
 
 
