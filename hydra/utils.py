@@ -15,18 +15,21 @@ from hydra.types import TargetConf
 log = logging.getLogger(__name__)
 
 
-def call(config: Any, *args: Any, **kwargs: Any) -> Any:
-    return _call(config, *args, **kwargs)
-
-
-def _call(config: Any, *args: Any, **kwargs: Any) -> Any:
+def instantiate(config: Any, *args: Any, **kwargs: Any) -> Any:
     """
-    :param config: An object describing what to call and what params to use.
-                   _target_ : str : Mandatory target (class name, function name etc)
-                   _recursive_: bool = True : recursive instantiation, defaults to True
-    :param args: optional positional parameters pass-through
-    :param kwargs: optional named parameters pass-through
-    :return: the return value from the specified class or method
+    :param config: An config object describing what to call and what params to use.
+                   In addition to the parameters, the config must contain:
+                   _target_ : target class or callable name (str)
+                   _recursive_: Construct nested objects as well (bool).
+                                True by default.
+                                may be overridden via a _recursive_ key in
+                                the kwargs
+    :param args: Optional positional parameters pass-through
+    :param kwargs: Optional named parameters to override
+                   parameters in the config object. Parameters not present
+                   in the config objects are being passed as is to the target.
+    :return: if _target_ is a class name: the instantiated object
+             if _target_ is a callable: the return value of the call
     """
 
     if OmegaConf.is_none(config):
@@ -70,8 +73,8 @@ def _call(config: Any, *args: Any, **kwargs: Any) -> Any:
         raise type(e)(f"Error instantiating/calling '{cls}' : {e}")
 
 
-# Alias for call
-instantiate = call
+# Alias for instantiate
+call = instantiate
 
 
 def get_class(path: str) -> type:

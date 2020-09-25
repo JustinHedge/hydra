@@ -579,7 +579,7 @@ def _get_kwargs(
     config: Union[DictConfig, ListConfig],
     **kwargs: Any,
 ) -> Any:
-    from hydra.utils import _call
+    from hydra.utils import instantiate
 
     assert OmegaConf.is_config(config)
 
@@ -602,12 +602,12 @@ def _get_kwargs(
     if recursive:
         for k, v in final_kwargs.items():
             if _is_target(v):
-                final_kwargs[k] = _call(v)
+                final_kwargs[k] = instantiate(v)
             elif OmegaConf.is_dict(v) and not OmegaConf.is_none(v):
                 d = OmegaConf.create({}, flags={"allow_objects": True})
                 for key, value in v.items():
                     if _is_target(value):
-                        d[key] = _call(value)
+                        d[key] = instantiate(value)
                     elif OmegaConf.is_config(value):
                         d[key] = _get_kwargs(value)
                     else:
@@ -617,7 +617,7 @@ def _get_kwargs(
                 lst = OmegaConf.create([], flags={"allow_objects": True})
                 for x in v:
                     if _is_target(x):
-                        lst.append(_call(x))
+                        lst.append(instantiate(x))
                     elif OmegaConf.is_config(x):
                         lst.append(_get_kwargs(x))
                     else:
